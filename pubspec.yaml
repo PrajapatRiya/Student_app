@@ -1,0 +1,56 @@
+name: studentapp
+description: "A new Flutter project."
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_screenutil: ^5.9.3
+  pie_chart: ^5.4.0
+  carousel_slider: ^5.1.1
+  google_fonts: ^6.2.1
+  flutter_launcher_icons: ^0.14.4
+  smooth_page_indicator: ^1.2.1
+  marquee: ^2.3.0
+  table_calendar: ^3.2.0
+  get: ^4.7.2
+  salomon_bottom_bar: ^3.3.1
+  introduction_screen: ^3.1.17
+  date_picker_plus: ^4.2.0
+  intl: ^0.20.2
+  get_storage: ^2.1.1
+  open_filex: ^4.4.0
+  floating_animation: ^1.0.9
+  lottie: ^3.3.1
+  video_player: ^2.10.0
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/splash.png"
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/images/videoplayer.mp4
+
+  fonts:
+    - family: Lato
+      fonts:
+        - asset: assets/fonts/Lato-Black.ttf
+        - asset: assets/fonts/Lato-Bold.ttf
+        - asset: assets/fonts/Lato-Regular.ttf
