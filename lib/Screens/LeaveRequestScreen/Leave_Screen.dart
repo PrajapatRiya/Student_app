@@ -1,41 +1,102 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import '../commonclass/ApiConfigClass/ApiConfig_class.dart';
 
 class LeaveRequestScreen extends StatefulWidget {
-  const LeaveRequestScreen({super.key});
+  const LeaveRequestScreen({super.key, required userId});
 
   @override
   State<LeaveRequestScreen> createState() => _LeaveRequestScreenState();
 }
 
 class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
-  final List<Map<String, String>> leaveList = [
-    {
-      'image': 'assets/images/leave_request.png',
-      'from': '21/3/2025',
-      'to': '23/3/2025',
-      'reason': 'Sick Leave',
-      'status': 'Approved',
-    },
-    {
-      'image': 'assets/images/leave_request.png',
-      'from': '1/4/2025',
-      'to': '2/4/2025',
-      'reason': 'Personal Work',
-      'status': 'Pending',
-    },
-    {
-      'image': 'assets/images/leave_request.png',
-      'from': '10/5/2025',
-      'to': '12/5/2025',
-      'reason': 'Family Function',
-      'status': 'Rejected',
-    },
-  ];
+  List<Map<String, String>> leaveList = [];
+  final storageBox = GetStorage();
+  bool isLoading = true;
 
-  DateTime? fromDate;
-  DateTime? toDate;
+  @override
+  void initState() {
+    super.initState();
+    fetchLeaveRequests();
+  }
+
+  Future<void> fetchLeaveRequests() async {
+    final userId = storageBox.read("userId");
+    if (userId == null) {
+      setState(() {
+        isLoading = false;
+        leaveList = [];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("User ID not found. Please login again.")),
+      );
+      return;
+    }
+
+    final url = Uri.parse(ApiConfig.getLeaveRequestByIdUrl(userId));
+    print("Request URL: $url");
+
+    try {
+      final response = await http.get(url);
+      print("Response Status: ${response.statusCode}");
+      print("Response Body: ${response.body}");
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        setState(() {
+          leaveList = data.map<Map<String, String>>((item) {
+            String fromDate = 'N/A';
+            String toDate = 'N/A';
+            try {
+              final fromRawDate = item['fromDate']?.toString();
+              final toRawDate = item['toDate']?.toString();
+              if (fromRawDate != null) {
+                final parsedFromDate = DateTime.parse(fromRawDate);
+                fromDate = DateFormat('dd/MM/yyyy').format(parsedFromDate);
+              }
+              if (toRawDate != null) {
+                final parsedToDate = DateTime.parse(toRawDate);
+                toDate = DateFormat('dd/MM/yyyy').format(parsedToDate);
+              }
+            } catch (_) {
+              fromDate = item['fromDate']?.toString() ?? 'N/A';
+              toDate = item['toDate']?.toString() ?? 'N/A';
+            }
+
+            return {
+              'image': 'assets/images/leave_request.png',
+              'from': fromDate,
+              'to': toDate,
+              'reason': item['reason']?.toString() ?? 'N/A',
+              'status': item['status']?.toString() ?? 'Pending',
+            };
+          }).toList();
+          isLoading = false;
+        });
+      } else {
+        setState(() {
+          isLoading = false;
+          leaveList = [];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Failed to fetch leave requests.")),
+        );
+      }
+    } catch (e) {
+      print("Error fetching leave requests: $e");
+      setState(() {
+        isLoading = false;
+        leaveList = [];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error fetching leave requests: $e")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,17 +113,19 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: EdgeInsets.all(screenWidth * 0.04),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSection("All Leaves", leaveList, screenWidth),
             SizedBox(height: screenHeight * 0.02),
-            _buildSection("Pending Leaves", leaveList.where((e) => e['status'] == 'Pending').toList(), screenWidth),
+            _buildSection("", leaveList.where((e) => e['status'] == 'Pending').toList(), screenWidth),
             SizedBox(height: screenHeight * 0.02),
-            _buildSection("Approved Leaves", leaveList.where((e) => e['status'] == 'Approved').toList(), screenWidth),
-            SizedBox(height: screenHeight * 0.08), // spacing for FAB
+            _buildSection("", leaveList.where((e) => e['status'] == 'Approved').toList(), screenWidth),
+            SizedBox(height: screenHeight * 0.08),
           ],
         ),
       ),
@@ -72,7 +135,6 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
         shape: const CircleBorder(),
         child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -80,10 +142,19 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-        const SizedBox(height: 10),
-        ListView.builder(
+        if (title.isNotEmpty) ...[
+          Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+          ),
+          const SizedBox(height: 10),
+        ],
+        items.isEmpty
+            ? const Padding(
+          padding: EdgeInsets.symmetric(vertical: 10),
+          child: Text("No leaves found.", style: TextStyle(color: Colors.grey)),
+        )
+            : ListView.builder(
           physics: const NeverScrollableScrollPhysics(),
           shrinkWrap: true,
           itemCount: items.length,
@@ -107,10 +178,17 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                     width: screenWidth * 0.13,
                     height: screenWidth * 0.13,
                     fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.broken_image,
+                      size: 40,
+                      color: Colors.red,
+                    ),
                   ),
                 ),
-                title: Text('${item['from']} to ${item['to']}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                title: Text(
+                  '${item['from']} to ${item['to']}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
                 subtitle: Text('Reason: ${item['reason']}'),
                 trailing: Container(
                   padding: EdgeInsets.symmetric(
@@ -135,17 +213,18 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
   }
 
   void _openLeaveBottomSheet(BuildContext context) {
-    DateTime? tempFromDate = fromDate;
-    DateTime? tempToDate = toDate;
+    DateTime? tempFromDate;
+    DateTime? tempToDate;
     TextEditingController tempReasonController = TextEditingController();
+    final screenWidth = MediaQuery.of(context).size.width;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) {
-        final screenWidth = MediaQuery.of(context).size.width;
         return Padding(
           padding: EdgeInsets.only(
             left: screenWidth * 0.05,
@@ -160,11 +239,12 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Center(
-                    child: Text('Apply Leave',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'Apply Leave',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
                   ),
                   const SizedBox(height: 16),
-
                   const Text('From Date', style: TextStyle(fontWeight: FontWeight.bold)),
                   GestureDetector(
                     onTap: () async {
@@ -182,7 +262,6 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                       tempFromDate != null ? _formatDate(tempFromDate!) : 'Select From Date',
                     ),
                   ),
-
                   const Text('To Date', style: TextStyle(fontWeight: FontWeight.bold)),
                   GestureDetector(
                     onTap: () async {
@@ -200,7 +279,6 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                       tempToDate != null ? _formatDate(tempToDate!) : 'Select To Date',
                     ),
                   ),
-
                   const Text('Reason', style: TextStyle(fontWeight: FontWeight.bold)),
                   TextField(
                     controller: tempReasonController,
@@ -212,30 +290,68 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                       contentPadding: const EdgeInsets.all(12),
                     ),
                   ),
-
                   const SizedBox(height: 20),
                   Center(
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         if (tempFromDate != null &&
                             tempToDate != null &&
                             tempReasonController.text.isNotEmpty) {
-                          Navigator.pop(context);
-                          setState(() {
-                            leaveList.add({
-                              'image': 'assets/images/leave_request.png',
-                              'from': DateFormat('dd/MM/yyyy').format(tempFromDate!),
-                              'to': DateFormat('dd/MM/yyyy').format(tempToDate!),
-                              'reason': tempReasonController.text,
-                              'status': 'Pending',
+                          final userId = storageBox.read("userId");
+                          if (userId == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("User ID not found. Please login again."),
+                              ),
+                            );
+                            return;
+                          }
+
+                          final url = Uri.parse(ApiConfig.createLeaveRequestUrl);
+                          final response = await http.post(
+                            url,
+                            headers: {"Content-Type": "application/json"},
+                            body: jsonEncode({
+                              "samId": userId,
+                              "lrmFromDate": DateFormat('yyyy-MM-dd').format(tempFromDate!),
+                              "lrmToDate": DateFormat('yyyy-MM-dd').format(tempToDate!),
+                              "lrmReason": tempReasonController.text,
+                            }),
+                          );
+
+                          final data = json.decode(response.body);
+                          if (response.statusCode == 200 && data["success"] == true) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Leave request submitted.")),
+                            );
+                            Navigator.pop(context);
+                            setState(() {
+                              leaveList.add({
+                                'image': 'assets/images/leave_request.png',
+                                'from': DateFormat('dd/MM/yyyy').format(tempFromDate!),
+                                'to': DateFormat('dd/MM/yyyy').format(tempToDate!),
+                                'reason': tempReasonController.text,
+                                'status': 'Pending',
+                              });
                             });
-                          });
+                            await fetchLeaveRequests();
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(data["message"] ?? "Submission failed")),
+                            );
+                          }
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Please fill all fields.")),
+                          );
                         }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF4869b1),
                         padding: EdgeInsets.symmetric(
-                            horizontal: screenWidth * 0.1, vertical: 14),
+                          horizontal: screenWidth * 0.1,
+                          vertical: 14,
+                        ),
                       ),
                       child: const Text('Submit', style: TextStyle(color: Colors.white)),
                     ),

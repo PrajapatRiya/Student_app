@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:studentapp/Screens/FeedbackScreen/FeedBack_Screen.dart';
 
 class FeedbacklistScreen extends StatefulWidget {
@@ -10,6 +11,8 @@ class FeedbacklistScreen extends StatefulWidget {
 }
 
 class _FeedbacklistScreenState extends State<FeedbacklistScreen> {
+
+  final storageBox = GetStorage();
   final List<String> dates = [
     '01 Jul 2025',
     '30 Jun 2025',
@@ -25,7 +28,7 @@ class _FeedbacklistScreenState extends State<FeedbacklistScreen> {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
-
+    final userId = storageBox.read("userId");
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -67,7 +70,8 @@ class _FeedbacklistScreenState extends State<FeedbacklistScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const FeedbackScreen(),
+
+                      builder: (context) =>  FeedbackScreen(userId: userId,),
                     ),
                   );
                 },

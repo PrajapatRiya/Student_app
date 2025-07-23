@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:studentapp/Screens/Examscreen/Examscreen.dart';
 import 'package:studentapp/Screens/FeedbackScreen/Feedbacklist_Screen.dart';
 import 'package:studentapp/Screens/LeaveRequestScreen/Leave_Screen.dart';
@@ -17,10 +18,16 @@ import '../CertificateScreen/Certificate_Screen.dart';
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
+
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
+
+
+    final storageBox = GetStorage();
+    final userId = storageBox.read("userId") ?? "";
 
     return Container(
       width: screenWidth * 0.8,
@@ -105,7 +112,7 @@ class AppDrawer extends StatelessWidget {
                         context,
                         null,
                         'Leave Request',
-                        const LeaveRequestScreen(),
+                        LeaveRequestScreen(userId:userId),
                         screenWidth,
                         imageAsset: 'assets/images/leave.png',
                       ),

@@ -1,5 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:get_storage/get_storage.dart';
+import 'package:http/http.dart' as http;
 import 'package:studentapp/Screens/Batchscreen/Batchslot_Screen.dart';
+
+import '../commonclass/ApiConfigClass/ApiConfig_class.dart';
 
 class BatchScreen extends StatefulWidget {
   const BatchScreen({super.key});
@@ -9,50 +14,45 @@ class BatchScreen extends StatefulWidget {
 }
 
 class _BatchScreenState extends State<BatchScreen> {
-  final List<Map<String, String>> courseList = [
-    {
-      'title': 'SDLC',
-      'status': 'Active',
-      'time': '9:30 - 10:30',
-      'date': '1-1-2025 - 30-1-2025',
-      'image': 'assets/images/SDLC.png'
-    },
-    {
-      'title': 'HTML',
-      'status': 'Pending',
-      'time': '11:00 - 12:00',
-      'date': '2-1-2025 - 15-2-2025',
-      'image': 'assets/images/html.png'
-    },
-    {
-      'title': 'CSS',
-      'status': 'Completed',
-      'time': '12:00 - 1:00',
-      'date': '3-1-2025 - 10-2-2025',
-      'image': 'assets/images/css.png'
-    },
-    {
-      'title': 'Bootstrap',
-      'status': 'Active',
-      'time': '2:00 - 3:00',
-      'date': '4-1-2025 - 28-2-2025',
-      'image': 'assets/images/bootstrep.png'
-    },
-    {
-      'title': 'jQuery',
-      'status': 'Pending',
-      'time': '3:30 - 4:30',
-      'date': '5-1-2025 - 25-2-2025',
-      'image': 'assets/images/jquery.png'
-    },
-    {
-      'title': 'JavaScript',
-      'status': 'Active',
-      'time': '5:00 - 6:00',
-      'date': '6-1-2025 - 20-2-2025',
-      'image': 'assets/images/java.png'
-    },
-  ];
+  List<Map<String, dynamic>> courseList = [];
+  bool isLoading = true;
+
+  final storageBox = GetStorage();
+
+  @override
+  void initState() {
+    super.initState();
+    fetchBatchList();
+  }
+
+  Future<void> fetchBatchList() async {
+    try {
+      final userId = storageBox.read("userId");
+
+      final url = ApiConfig.getBatchListUrl(userId);
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final List data = json.decode(response.body);
+
+        courseList = data.map((item) {
+          return {
+            "title": item["batchTitle"] ?? "",
+            "date": item["batchDate"] ?? "",
+            "time": item["batchTime"] ?? "",
+            "status": item["batchStatus"] ?? "",
+          };
+        }).toList().cast<Map<String, dynamic>>(); // 🔹 ab dynamic cast
+
+        setState(() => isLoading = false);
+      } else {
+        setState(() => isLoading = false);
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+      debugPrint("Error fetching batch list: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,8 +63,11 @@ class _BatchScreenState extends State<BatchScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF4869b1),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Colors.white, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_new,
+            color: Colors.white,
+            size: screenWidth * 0.05,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: InkWell(
@@ -79,7 +82,7 @@ class _BatchScreenState extends State<BatchScreen> {
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
-              fontSize: screenWidth * 0.06,
+              fontSize: screenWidth * 0.055,
             ),
           ),
         ),
@@ -88,98 +91,121 @@ class _BatchScreenState extends State<BatchScreen> {
           Padding(
             padding: EdgeInsets.only(right: screenWidth * 0.04),
             child: Image.asset(
-              'assets/images/batch.png',
+              'assets/images/docs.png',
               color: Colors.orange,
-              height: screenWidth * 0.08,
-              width: screenWidth * 0.08,
+              height: screenHeight * 0.035,
+              width: screenHeight * 0.035,
             ),
           ),
         ],
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+        padding: EdgeInsets.all(screenWidth * 0.03),
         itemCount: courseList.length,
         itemBuilder: (context, index) {
           final item = courseList[index];
           return Card(
-            margin: const EdgeInsets.only(bottom: 12),
+            margin: EdgeInsets.only(bottom: screenHeight * 0.015),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(screenWidth * 0.03),
             ),
             elevation: 4,
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(screenWidth * 0.03),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Left Image (Asset)
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(screenWidth * 0.02),
                     child: Image.asset(
-                      item['image']!,
-                      height: screenWidth * 0.10,
-                      width: screenWidth * 0.10,
+                      'assets/images/batch.png',
+                      height: screenWidth * 0.15,
+                      width: screenWidth * 0.15,
                       fit: BoxFit.cover,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: screenWidth * 0.03),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Title & Fixed Upcoming Button
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              item['title']!,
+                              "${item['title']}", // 🔹 dynamic ke liye string interpolation
                               style: TextStyle(
-                                fontSize: screenWidth * 0.042,
+                                fontSize: screenWidth * 0.045,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                             Container(
-                              width: screenWidth * 0.24,
+                              width: screenWidth * 0.25,
                               alignment: Alignment.center,
                               padding: EdgeInsets.symmetric(
-                                  vertical: screenHeight * 0.007),
+                                vertical: screenHeight * 0.006,
+                                horizontal: screenWidth * 0.02,
+                              ),
                               decoration: BoxDecoration(
-                                color:  Color(0xFFF39c12),
-                                borderRadius: BorderRadius.circular(20),
+                                color: (item['status'] == "Pending")
+                                    ? Colors.yellow
+                                    : (item['status'] == "Running")
+                                    ? Colors.orange
+                                    : (item['status'] == "Completed")
+                                    ? Colors.green
+                                    : Colors.grey, // fallback if API sends something else
+                                borderRadius: BorderRadius.circular(
+                                  screenWidth * 0.05,
+                                ),
                               ),
                               child: Text(
-                                'Upcoming',
+                                "${item['status']}",
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: screenWidth * 0.03,
+                                  fontSize: screenWidth * 0.032,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
+
                           ],
                         ),
-                        const SizedBox(height: 6),
-
-                        // Time
+                        SizedBox(height: screenHeight * 0.008),
                         Row(
                           children: [
-                            const Icon(Icons.access_time,
-                                size: 16, color: Colors.grey),
-                            const SizedBox(width: 6),
-                            Text(item['time']!,
-                                style: const TextStyle(color: Colors.grey)),
+                            Icon(
+                              Icons.access_time,
+                              size: screenWidth * 0.04,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(width: screenWidth * 0.02),
+                            Text(
+                              "${item['time']}",
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: screenWidth * 0.035,
+                              ),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-
-                        // Date
+                        SizedBox(height: screenHeight * 0.006),
                         Row(
                           children: [
-                            const Icon(Icons.calendar_today,
-                                size: 16, color: Colors.grey),
-                            const SizedBox(width: 6),
-                            Text(item['date']!,
-                                style: const TextStyle(color: Colors.grey)),
+                            Icon(
+                              Icons.calendar_today,
+                              size: screenWidth * 0.04,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(width: screenWidth * 0.02),
+                            Text(
+                              "${item['date']}",
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: screenWidth * 0.035,
+                              ),
+                            ),
                           ],
                         ),
                       ],

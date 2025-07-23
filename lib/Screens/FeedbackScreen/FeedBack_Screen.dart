@@ -1,8 +1,15 @@
+import 'dart:convert';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+
+import '../commonclass/ApiConfigClass/ApiConfig_class.dart';
 import 'FeedbackSuccess.dart';
+import 'package:http/http.dart' as http;
 
 class FeedbackScreen extends StatefulWidget {
-  const FeedbackScreen({super.key});
+  final String userId;
+  const FeedbackScreen({super.key, required this.userId});
 
   @override
   State<FeedbackScreen> createState() => _FeedbackScreenState();
@@ -10,66 +17,49 @@ class FeedbackScreen extends StatefulWidget {
 
 class _FeedbackScreenState extends State<FeedbackScreen> {
   final PageController _pageController = PageController();
+  bool isLoading = true;
   int currentIndex = 0;
+  List<dynamic> questions1 = [];
+  final List<Map<String, dynamic>> questions=[];
   final TextEditingController commentController = TextEditingController();
 
-  final List<Map<String, dynamic>> questions = [
-    {
-      'question': '1) How is Your course training going?',
-      'options': ['Average', 'Good', 'Excellent'],
-      'selected': null,
-    },
-    {
-      'question': '2) In your training you will find it easy to understand topics ?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-    {
-      'question': '3) In your training giving you Systematic guidance?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-    {
-      'question': '4) Are you Happy and satisfied with your experience at TCP INDIA COMPUTER EDUCATION?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-    {
-      'question': '5) Are you satisfied with the batch arrangement and Cleanliness of class rooms in the center?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-    {
-      'question': '6) Are you getting proper provision of drinking water and washroom?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-    {
-      'question': '7) Does your batch start on time and enough time is given?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-    {
-      'question': '8) How Satisfied are you with your trainer\'s ability to teach theory and practical?',
-      'options': ['Average', 'Good', 'Excellent'],
-      'selected': null,
-    },
-    {
-      'question': '9) Do you want to refer your siblings or relatives?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-    {
-      'question': '10) Are Module tests conducted regularly in your batch?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-    {
-      'question': '11) Are computers available for extra practice and is a trainer available for revision?',
-      'options': ['Yes', 'No'],
-      'selected': null,
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    fetchQuestions();
+  }
+
+  Future<void> fetchQuestions() async{
+    try{
+      final url = ApiConfig.getFeedbackQuestionsUrl(widget.userId);
+
+      final response = await http.get(Uri.parse(url));
+
+
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          questions1 = data;
+          print("ele => "+ questions1.length.toString());
+          for(int i=0;i<questions1.length;i++){
+            print(questions1[i]);
+
+            questions.add(questions1[i]);
+          }
+          print("questions");
+          print(questions);
+        });
+
+      }
+    }
+    catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
+  }
 
   void _onOptionSelected(int questionIndex, int selectedOptionIndex) {
     setState(() {
@@ -92,9 +82,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => const FeedbackSuccessScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const FeedbackSuccessScreen()),
       );
     }
   }
@@ -114,13 +102,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Image.asset(
-                  'assets/images/Feedback1.png',
-                  fit: BoxFit.cover,
-                ),
-                Container(
-                  color: Colors.black.withOpacity(0.6),
-                ),
+                Image.asset('assets/images/Feedback1.png', fit: BoxFit.cover),
+                Container(color: Colors.black.withOpacity(0.6)),
               ],
             ),
           ),
@@ -153,15 +136,22 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                                   ),
                                 ),
                                 SizedBox(height: screenHeight * 0.02),
-                                ...List.generate(q['options'].length, (optionIndex) {
+                                ...List.generate(q['options'].length, (
+                                  optionIndex,
+                                ) {
                                   return RadioListTile(
                                     value: optionIndex,
                                     groupValue: q['selected'],
-                                    onChanged: (value) =>
-                                        _onOptionSelected(index, value as int),
+                                    onChanged:
+                                        (value) => _onOptionSelected(
+                                          index,
+                                          value as int,
+                                        ),
                                     title: Text(
                                       q['options'][optionIndex],
-                                      style: TextStyle(fontSize: screenWidth * 0.042),
+                                      style: TextStyle(
+                                        fontSize: screenWidth * 0.042,
+                                      ),
                                     ),
                                   );
                                 }),
@@ -228,7 +218,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                currentIndex == questions.length ? 'Submit' : 'Next',
+                                currentIndex == questions.length
+                                    ? 'Submit'
+                                    : 'Next',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: screenWidth * 0.042,
