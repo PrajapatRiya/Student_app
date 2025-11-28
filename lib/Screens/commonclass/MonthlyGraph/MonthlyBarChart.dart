@@ -12,9 +12,10 @@ class MonthlyBarChart extends StatefulWidget {
 }
 
 class _MonthlyBarChartState extends State<MonthlyBarChart> {
-  final List<double> monthlyValues = [];
+  List<double> monthlyValues = [];
+  List<String> activeMonths = [];
 
-  final List<String> months = [
+  final List<String> allMonths = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
@@ -26,42 +27,59 @@ class _MonthlyBarChartState extends State<MonthlyBarChart> {
   }
 
   Future<void> fetchChartAttendance() async {
-    final box = GetStorage();
-    final userId = box.read('userId');
-
-    if (userId == null) {
-      print("❌ Error: userId not found in storage.");
-      return;
-    }
-
-    final url = ApiConfig.getChartAttendanceUrl(userId);
-    print("📡 Calling API: $url");
-
     try {
+      final box = GetStorage();
+      final userId = box.read('userId');
+      if (userId == null) {
+        debugPrint("❌ userId not found");
+        return;
+      }
+
+      final url = ApiConfig.getChartAttendanceUrl(userId);
       final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
+
+      if (response.statusCode == 200 && response.body.isNotEmpty) {
         final data = jsonDecode(response.body);
-        print("✅ Attendance Chart Data: $data");
+        if (data is List) {
+          List<double> newValues = [];
+          for (var item in data) {
+            double? parsed;
+            if (item is num) {
+              parsed = item.toDouble();
+            } else {
+              parsed = double.tryParse(item.toString());
+            }
 
-        // Clear old values if any
-        monthlyValues.clear();
-
-        for (var item in data) {
-          final parsed = double.tryParse(item.toString());
-          if (parsed != null) {
-            monthlyValues.add(parsed);
+            if (parsed != null) {
+              double percentage = parsed <= 1 ? parsed * 100 : parsed;
+              newValues.add(percentage.clamp(0, 100));
+            }
           }
+
+          List<String> newMonths = [];
+          if (newValues.isNotEmpty) {
+            int startIndex = allMonths.length - newValues.length;
+            newMonths = allMonths.sublist(startIndex);
+          }
+
+          // ✅ Store in local storage for AttendanceScreen
+          final List<Map<String, dynamic>> chartData = [];
+          for (int i = 0; i < newMonths.length && i < newValues.length; i++) {
+            chartData.add({
+              "month": newMonths[i],
+              "percentage": newValues[i],
+            });
+          }
+          box.write('chartAttendanceData', chartData);
+
+          setState(() {
+            monthlyValues = newValues;
+            activeMonths = newMonths;
+          });
         }
-
-        print("📊 Parsed Monthly Values: $monthlyValues");
-
-        // Refresh UI
-        setState(() {});
-      } else {
-        print("❌ API Error: ${response.statusCode}");
       }
     } catch (e) {
-      print("❌ Exception: $e");
+      debugPrint("Error: $e");
     }
   }
 
@@ -91,7 +109,7 @@ class _MonthlyBarChartState extends State<MonthlyBarChart> {
             aspectRatio: 1.3,
             child: BarChart(
               BarChartData(
-                alignment: BarChartAlignment.spaceBetween,
+                alignment: BarChartAlignment.spaceEvenly,
                 minY: 0,
                 maxY: 100,
                 gridData: FlGridData(
@@ -105,28 +123,30 @@ class _MonthlyBarChartState extends State<MonthlyBarChart> {
                   touchTooltipData: BarTouchTooltipData(
                     tooltipBgColor: Colors.black87,
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final monthLabel = activeMonths[groupIndex];
                       return BarTooltipItem(
-                        '${months[group.x]}: ${rod.toY.toInt()}',
+                        '$monthLabel: ${rod.toY.toStringAsFixed(1)}%',
                         const TextStyle(color: Colors.white),
                       );
                     },
                   ),
-                  touchCallback: (
-                      FlTouchEvent event,
-                      BarTouchResponse? response,
-                      ) {
+                  touchCallback:
+                      (FlTouchEvent event, BarTouchResponse? response) {
                     if (response != null &&
                         response.spot != null &&
                         event is FlTapUpEvent) {
                       int index = response.spot!.touchedBarGroupIndex;
-                      String selectedMonth = months[index];
-                      int currentYear = DateTime.now().year;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CalenderScreen(selectedMonth,currentYear),
-                        ),
-                      );
+                      if (index < activeMonths.length) {
+                        String selectedMonth = activeMonths[index];
+                        int currentYear = DateTime.now().year;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                CalenderScreen(selectedMonth, currentYear),
+                          ),
+                        );
+                      }
                     }
                   },
                 ),
@@ -134,17 +154,37 @@ class _MonthlyBarChartState extends State<MonthlyBarChart> {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 28,
+                      reservedSize: 45,
                       getTitlesWidget: (value, meta) {
                         int index = value.toInt();
-                        return SideTitleWidget(
-                          axisSide: meta.axisSide,
-                          space: 4,
-                          child: Text(
-                            index < months.length ? months[index] : '',
-                            style: const TextStyle(fontSize: 10),
-                          ),
-                        );
+                        if (index < activeMonths.length) {
+                          return SideTitleWidget(
+                            axisSide: meta.axisSide,
+                            space: 4,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  activeMonths[index],
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${monthlyValues[index].toStringAsFixed(0)}%',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
                       },
                     ),
                   ),
@@ -152,25 +192,22 @@ class _MonthlyBarChartState extends State<MonthlyBarChart> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       interval: 10,
-                      reservedSize: 30,
+                      reservedSize: 35,
                       getTitlesWidget: (value, _) => Text(
-                        '${value.toInt()}',
+                        '${value.toInt()}%',
                         style: const TextStyle(fontSize: 10),
                       ),
                     ),
                   ),
                   topTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
+                      sideTitles: SideTitles(showTitles: false)),
                   rightTitles: AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
+                      sideTitles: SideTitles(showTitles: false)),
                 ),
                 borderData: FlBorderData(show: false),
                 barGroups: List.generate(monthlyValues.length, (index) {
                   final double value = monthlyValues[index];
-                  late final Color barColor;
-
+                  Color barColor;
                   if (value < 50) {
                     barColor = Colors.redAccent;
                   } else if (value < 70) {
@@ -184,7 +221,7 @@ class _MonthlyBarChartState extends State<MonthlyBarChart> {
                     barRods: [
                       BarChartRodData(
                         toY: value,
-                        width: 14,
+                        width: 20,
                         borderRadius: BorderRadius.circular(6),
                         color: barColor,
                       ),

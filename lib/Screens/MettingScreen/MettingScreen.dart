@@ -4,7 +4,7 @@ import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import '../commonclass/calender/attendencecalendergroup.dart';
 
 class UpComingMettingScreen extends StatefulWidget {
-  const UpComingMettingScreen({super.key});
+  const UpComingMettingScreen({super.key, required meeting});
 
   @override
   State<UpComingMettingScreen> createState() => _MettingScreenState();

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
@@ -115,16 +114,17 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
+          : leaveList.isEmpty
+          ? const Center(child: Text("No leave requests found."))
           : SingleChildScrollView(
         padding: EdgeInsets.all(screenWidth * 0.04),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSection("All Leaves", leaveList, screenWidth),
             SizedBox(height: screenHeight * 0.02),
-            _buildSection("", leaveList.where((e) => e['status'] == 'Pending').toList(), screenWidth),
+            _buildSection("Pending", leaveList.where((e) => e['status'] == 'Pending').toList(), screenWidth),
             SizedBox(height: screenHeight * 0.02),
-            _buildSection("", leaveList.where((e) => e['status'] == 'Approved').toList(), screenWidth),
+            _buildSection("Approved", leaveList.where((e) => e['status'] == 'Approved').toList(), screenWidth),
             SizedBox(height: screenHeight * 0.08),
           ],
         ),
@@ -139,22 +139,16 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
   }
 
   Widget _buildSection(String title, List<Map<String, String>> items, double screenWidth) {
+    if (items.isEmpty) return const SizedBox();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (title.isNotEmpty) ...[
-          Text(
-            title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-          ),
-          const SizedBox(height: 10),
-        ],
-        items.isEmpty
-            ? const Padding(
-          padding: EdgeInsets.symmetric(vertical: 10),
-          child: Text("No leaves found.", style: TextStyle(color: Colors.grey)),
-        )
-            : ListView.builder(
+        Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+        ),
+        const SizedBox(height: 10),
+        ListView.builder(
           physics: const NeverScrollableScrollPhysics(),
           shrinkWrap: true,
           itemCount: items.length,
@@ -178,31 +172,20 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                     width: screenWidth * 0.13,
                     height: screenWidth * 0.13,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const Icon(
-                      Icons.broken_image,
-                      size: 40,
-                      color: Colors.red,
-                    ),
+                    errorBuilder: (context, error, stackTrace) =>
+                    const Icon(Icons.broken_image, size: 40, color: Colors.red),
                   ),
                 ),
-                title: Text(
-                  '${item['from']} to ${item['to']}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                title: Text('${item['from']} to ${item['to']}', style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text('Reason: ${item['reason']}'),
                 trailing: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: screenWidth * 0.04,
-                    vertical: screenWidth * 0.015,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.04, vertical: screenWidth * 0.015),
                   decoration: BoxDecoration(
                     color: _getStatusColor(item['status']),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(
-                    item['status']!,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                  ),
+                  child: Text(item['status']!,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                 ),
               ),
             );
@@ -217,13 +200,12 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
     DateTime? tempToDate;
     TextEditingController tempReasonController = TextEditingController();
     final screenWidth = MediaQuery.of(context).size.width;
+    bool isSubmitting = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
           padding: EdgeInsets.only(
@@ -239,11 +221,7 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Center(
-                    child: Text(
-                      'Apply Leave',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                      child: Text('Apply Leave', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
                   const SizedBox(height: 16),
                   const Text('From Date', style: TextStyle(fontWeight: FontWeight.bold)),
                   GestureDetector(
@@ -254,13 +232,9 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2030),
                       );
-                      if (picked != null) {
-                        setStateModal(() => tempFromDate = picked);
-                      }
+                      if (picked != null) setStateModal(() => tempFromDate = picked);
                     },
-                    child: _dateBox(
-                      tempFromDate != null ? _formatDate(tempFromDate!) : 'Select From Date',
-                    ),
+                    child: _dateBox(tempFromDate != null ? _formatDate(tempFromDate!) : 'Select From Date'),
                   ),
                   const Text('To Date', style: TextStyle(fontWeight: FontWeight.bold)),
                   GestureDetector(
@@ -271,74 +245,66 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2030),
                       );
-                      if (picked != null) {
-                        setStateModal(() => tempToDate = picked);
-                      }
+                      if (picked != null) setStateModal(() => tempToDate = picked);
                     },
-                    child: _dateBox(
-                      tempToDate != null ? _formatDate(tempToDate!) : 'Select To Date',
-                    ),
+                    child: _dateBox(tempToDate != null ? _formatDate(tempToDate!) : 'Select To Date'),
                   ),
                   const Text('Reason', style: TextStyle(fontWeight: FontWeight.bold)),
                   TextField(
                     controller: tempReasonController,
                     maxLines: 3,
                     decoration: InputDecoration(
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                       contentPadding: const EdgeInsets.all(12),
                     ),
                   ),
                   const SizedBox(height: 20),
                   Center(
-                    child: ElevatedButton(
+                    child: isSubmitting
+                        ? const CircularProgressIndicator()
+                        : ElevatedButton(
                       onPressed: () async {
                         if (tempFromDate != null &&
                             tempToDate != null &&
                             tempReasonController.text.isNotEmpty) {
+                          setStateModal(() => isSubmitting = true);
+
                           final userId = storageBox.read("userId");
-                          if (userId == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("User ID not found. Please login again."),
-                              ),
-                            );
-                            return;
-                          }
-
                           final url = Uri.parse(ApiConfig.createLeaveRequestUrl);
-                          final response = await http.post(
-                            url,
-                            headers: {"Content-Type": "application/json"},
-                            body: jsonEncode({
-                              "samId": userId,
-                              "lrmFromDate": DateFormat('yyyy-MM-dd').format(tempFromDate!),
-                              "lrmToDate": DateFormat('yyyy-MM-dd').format(tempToDate!),
-                              "lrmReason": tempReasonController.text,
-                            }),
-                          );
+                          final body = json.encode({
+                            "samId": userId.toString(),
+                            "lrmFromDate": tempFromDate!.toIso8601String(),
+                            "lrmToDate": tempToDate!.toIso8601String(),
+                            "lrmReason": tempReasonController.text,
+                          });
 
-                          final data = json.decode(response.body);
-                          if (response.statusCode == 200 && data["success"] == true) {
+                          try {
+                            final response = await http.post(url,
+                                headers: {"Content-Type": "application/json"}, body: body);
+
+                            if (response.statusCode == 200 || response.statusCode == 201) {
+                              Navigator.pop(context);
+                              await fetchLeaveRequests();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("✅ Leave Request Submitted Successfully"),
+                                  backgroundColor: Colors.green,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        "Failed to submit leave: ${response.statusCode}")),
+                              );
+                            }
+                          } catch (e) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Leave request submitted.")),
+                              SnackBar(content: Text("Error submitting leave: $e")),
                             );
-                            Navigator.pop(context);
-                            setState(() {
-                              leaveList.add({
-                                'image': 'assets/images/leave_request.png',
-                                'from': DateFormat('dd/MM/yyyy').format(tempFromDate!),
-                                'to': DateFormat('dd/MM/yyyy').format(tempToDate!),
-                                'reason': tempReasonController.text,
-                                'status': 'Pending',
-                              });
-                            });
-                            await fetchLeaveRequests();
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(data["message"] ?? "Submission failed")),
-                            );
+                          } finally {
+                            setStateModal(() => isSubmitting = false);
                           }
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -348,10 +314,8 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF4869b1),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: screenWidth * 0.1,
-                          vertical: 14,
-                        ),
+                        padding:
+                        EdgeInsets.symmetric(horizontal: screenWidth * 0.1, vertical: 14),
                       ),
                       child: const Text('Submit', style: TextStyle(color: Colors.white)),
                     ),
@@ -376,9 +340,7 @@ class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
     child: Text(text),
   );
 
-  String _formatDate(DateTime date) {
-    return DateFormat('dd MMM yyyy').format(date);
-  }
+  String _formatDate(DateTime date) => DateFormat('dd MMM yyyy').format(date);
 
   Color _getStatusColor(String? status) {
     switch (status) {

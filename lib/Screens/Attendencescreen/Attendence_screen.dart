@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:studentapp/Screens/calenderscreen/calenderscreen.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import 'package:studentapp/Screens/calenderscreen/calenderscreen.dart';
 import '../commonclass/ApiConfigClass/ApiConfig_class.dart';
 
 class AttendanceSummary {
@@ -13,7 +13,7 @@ class AttendanceSummary {
   final int absent;
   final int holiday;
   final int total;
-  final int percentage;
+  final double percentage;
 
   AttendanceSummary({
     required this.month,
@@ -26,12 +26,38 @@ class AttendanceSummary {
   });
 
   factory AttendanceSummary.fromJson(Map<String, dynamic> json) {
-    final present = json['p'] ?? 0;
-    final leave = json['l'] ?? 0;
-    final absent = json['a'] ?? 0;
-    final holiday = json['h'] ?? 0;
-    final total = json['t'] ?? (present + leave + absent + holiday);
-    final percentage = json['per'] ?? 0;
+    int parseInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
+    }
+
+    double parseDouble(dynamic value) {
+      if (value == null) return 0.0;
+      if (value is double) return value;
+      if (value is int) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? 0.0;
+      return 0.0;
+    }
+
+    final present = parseInt(json['p']);
+    final leave = parseInt(json['l']);
+    final absent = parseInt(json['a']);
+    final holiday = parseInt(json['h']);
+    final total = parseInt(json['t']) != 0
+        ? parseInt(json['t'])
+        : (present + leave + absent + holiday);
+
+    // Handle 'per' value safely
+    double per = parseDouble(json['per']);
+    if (per == 0.0 && total > 0) {
+      per = ((present + leave) / total) * 100;
+    } else if (per <= 1) {
+      per = per * 100;
+    }
+
     return AttendanceSummary(
       month: json['month'] ?? '',
       present: present,
@@ -39,7 +65,19 @@ class AttendanceSummary {
       absent: absent,
       holiday: holiday,
       total: total,
-      percentage: percentage,
+      percentage: per.clamp(0, 100),
+    );
+  }
+
+  AttendanceSummary copyWith({double? percentage}) {
+    return AttendanceSummary(
+      month: month,
+      present: present,
+      leave: leave,
+      absent: absent,
+      holiday: holiday,
+      total: total,
+      percentage: percentage ?? this.percentage,
     );
   }
 }
@@ -64,21 +102,91 @@ class _AttendenceScreenState extends State<AttendenceScreen> {
 
   Future<void> fetchAttendance() async {
     final userId = box.read("userId");
-    final url = Uri.parse(ApiConfig.getAttendanceUrl(userId));
+    if (userId == null) {
+      debugPrint("❌ userId not found");
+      return;
+    }
+
+    final attendanceUrl = Uri.parse(ApiConfig.getAttendanceUrl(userId));
+    final chartUrl = Uri.parse(ApiConfig.getChartAttendanceUrl(userId));
+
     try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final List data = json.decode(response.body);
-        setState(() {
-          monthlyAttendance =
-              data.map((e) => AttendanceSummary.fromJson(e)).toList();
-          isLoading = false;
-        });
-      } else {
-        setState(() => isLoading = false);
+      // Call both APIs in parallel
+      final responses = await Future.wait([
+        http.get(attendanceUrl),
+        http.get(chartUrl),
+      ]);
+
+      final attendanceResponse = responses[0];
+      final chartResponse = responses[1];
+
+      List<AttendanceSummary> summaries = [];
+
+      if (attendanceResponse.statusCode == 200 &&
+          attendanceResponse.body.isNotEmpty) {
+        final List data = json.decode(attendanceResponse.body);
+        summaries = data.map((e) => AttendanceSummary.fromJson(e)).toList();
       }
-    } catch (e) {
-      print("Error fetching attendance: $e");
+
+      // --- Fetch chart percentages (bar graph API) ---
+      List<double> chartPercentages = [];
+      List<String> chartMonths = [];
+      if (chartResponse.statusCode == 200 && chartResponse.body.isNotEmpty) {
+        final chartData = json.decode(chartResponse.body);
+        if (chartData is List) {
+          for (var item in chartData) {
+            double? parsed;
+            if (item is num) {
+              parsed = item.toDouble();
+            } else {
+              parsed = double.tryParse(item.toString());
+            }
+            if (parsed != null) {
+              double percentage = parsed <= 1 ? parsed * 100 : parsed;
+              chartPercentages.add(percentage.clamp(0, 100));
+            }
+          }
+
+          // Create corresponding month names for these chart ratios
+          final allMonths = [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec'
+          ];
+          int startIndex = allMonths.length - chartPercentages.length;
+          if (startIndex >= 0 && startIndex < allMonths.length) {
+            chartMonths = allMonths.sublist(startIndex);
+          }
+        }
+      }
+
+      // --- Match chart ratios to attendance months ---
+      for (int i = 0; i < summaries.length; i++) {
+        final summary = summaries[i];
+        for (int j = 0; j < chartMonths.length; j++) {
+          if (summary.month.contains(chartMonths[j])) {
+            summaries[i] =
+                summary.copyWith(percentage: chartPercentages[j].toDouble());
+          }
+        }
+      }
+
+      setState(() {
+        monthlyAttendance = summaries;
+        isLoading = false;
+      });
+    } catch (e, s) {
+      debugPrint("❌ Error fetching attendance data: $e");
+      debugPrintStack(stackTrace: s);
       setState(() => isLoading = false);
     }
   }
@@ -93,11 +201,8 @@ class _AttendenceScreenState extends State<AttendenceScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF4869b1),
         leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back_ios_new,
-            color: Colors.white,
-            size: screenWidth * 0.045,
-          ),
+          icon: Icon(Icons.arrow_back_ios_new,
+              color: Colors.white, size: screenWidth * 0.045),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -152,8 +257,8 @@ class _AttendenceScreenState extends State<AttendenceScreen> {
   Widget _buildAttendanceItem(
       AttendanceSummary item, double screenHeight, double screenWidth) {
     final monthParts = item.month.split('-');
-    final monthName = monthParts[0];
-    final year = monthParts[1];
+    final monthName = monthParts.first;
+    final year = monthParts.length > 1 ? monthParts[1] : '';
 
     return Container(
       margin: EdgeInsets.only(bottom: screenHeight * 0.02),
@@ -174,15 +279,17 @@ class _AttendenceScreenState extends State<AttendenceScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Month Block
               InkWell(
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CalenderScreen(monthName, int.parse(year)),
-                    ),
-                  );
+                  if (year.isNotEmpty) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            CalenderScreen(monthName, int.parse(year)),
+                      ),
+                    );
+                  }
                 },
                 child: Container(
                   width: screenWidth * 0.20,
@@ -194,91 +301,70 @@ class _AttendenceScreenState extends State<AttendenceScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        monthName,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: screenWidth * 0.045,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      Text(monthName,
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: screenWidth * 0.035,
+                              fontWeight: FontWeight.bold)),
                       SizedBox(height: screenHeight * 0.005),
-                      Text(
-                        year,
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: screenWidth * 0.035,
-                        ),
-                      ),
+                      Text(year,
+                          style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: screenWidth * 0.035)),
                     ],
                   ),
                 ),
               ),
-
               SizedBox(width: screenWidth * 0.03),
-
               Container(
                 height: screenWidth * 0.20,
                 width: 2,
                 color: Colors.grey,
               ),
-
               SizedBox(width: screenWidth * 0.03),
-
-              // Attendance Summary
               Expanded(
-                child: Column(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildStatusTile("Present", item.present.toString(),
-                            Colors.green, screenWidth),
-                        _buildStatusTile("Absent", item.absent.toString(),
-                            Colors.red, screenWidth),
-                        _buildStatusTile("Leave", item.leave.toString(),
-                            Colors.orange, screenWidth),
-                        _buildStatusTile("Holiday", item.holiday.toString(),
-                            Colors.purple, screenWidth),
-                      ],
-                    ),
+                    _buildStatusTile("Present", item.present.toString(),
+                        Colors.green, screenWidth),
+                    _buildStatusTile("Absent", item.absent.toString(),
+                        Colors.red, screenWidth),
+                    _buildStatusTile("Leave", item.leave.toString(),
+                        Colors.orange, screenWidth),
+                    _buildStatusTile("Holiday", item.holiday.toString(),
+                        Colors.purple, screenWidth),
                   ],
                 ),
               ),
             ],
           ),
-
           SizedBox(height: screenHeight * 0.02),
-
-          // Bottom row with TotalDays and Percentage
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Total Days: ${item.total}',
-                style: TextStyle(
-                  fontSize: screenWidth * 0.035,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-              Row(
-                children: [
-                  Text(
-                    'Percentage: ',
-                    style: TextStyle(
+              Text('Total Days: ${item.total}',
+                  style: TextStyle(
                       fontSize: screenWidth * 0.035,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  Text(
-                    "${item.percentage}%",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: screenWidth * 0.030,
-                    ),
-                  ),
+                      color: Colors.black)),
+              Row(
+                children: [
+                  Text('Percentage: ',
+                      style: TextStyle(
+                          fontSize: screenWidth * 0.035,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87)),
+                  Text("${item.percentage.toStringAsFixed(1)}%",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: screenWidth * 0.030,
+                        color: item.percentage >= 75
+                            ? Colors.green
+                            : item.percentage >= 50
+                            ? Colors.orange
+                            : Colors.red,
+                      )),
                 ],
               ),
             ],
@@ -288,52 +374,32 @@ class _AttendenceScreenState extends State<AttendenceScreen> {
     );
   }
 
-
   Widget _buildStatusTile(
       String label, String value, Color color, double screenWidth) {
     return Expanded(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: screenWidth * 0.030,
-              color: Colors.black87,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: screenWidth * 0.030,
+                  color: Colors.black87)),
           SizedBox(height: screenWidth * 0.015),
           Container(
             width: screenWidth * 0.08,
             height: screenWidth * 0.08,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              shape: BoxShape.circle,
-            ),
+                color: color.withOpacity(0.15), shape: BoxShape.circle),
             alignment: Alignment.center,
-            child: Text(
-              value,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: color,
-                fontSize: screenWidth * 0.032,
-              ),
-            ),
+            child: Text(value,
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                    fontSize: screenWidth * 0.032)),
           ),
         ],
       ),
     );
   }
-
-  Widget _verticalDivider(double screenHeight) {
-    return Container(
-      width: 1.5,
-      height: screenHeight * 0.07,
-      color: Colors.grey.shade400,
-    );
-  }
 }
-
-
-

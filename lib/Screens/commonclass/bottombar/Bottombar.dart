@@ -4,6 +4,7 @@ import 'package:salomon_bottom_bar/salomon_bottom_bar.dart';
 import 'package:studentapp/Screens/Attendencescreen/Attendence_screen.dart';
 import 'package:studentapp/Screens/Homescreen/Home_screen.dart';
 import 'package:studentapp/Screens/Profilescreen/profiles_screen.dart';
+import 'package:studentapp/Screens/commonclass/Drawer/AppDrawerscreen.dart';
 import '../../FeesScreen/Fees_Screen.dart';
 
 class BottomBar extends StatefulWidget {

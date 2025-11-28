@@ -9,7 +9,8 @@
   import 'Screens/FeedbackScreen/FeedBack_Screen.dart';
   import 'Screens/FeedbackScreen/FeedbackSuccess.dart';
   import 'Screens/FeedbackScreen/Feedbacklist_Screen.dart';
-  import 'Screens/Introductionscreen/introduction_screen.dart';
+  import 'Screens/FeedbackScreen/Feedback_detailes_Screen.dart';
+import 'Screens/Introductionscreen/introduction_screen.dart';
   import 'Screens/LeaveRequestScreen/Leave_Screen.dart';
   import 'Screens/MettingScreen/MainMettingscreen.dart';
   import 'Screens/commonclass/CertificateScreen/Certificate_Screen.dart';
